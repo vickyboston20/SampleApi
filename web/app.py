@@ -6,7 +6,7 @@ import bcrypt
 app = Flask(__name__)
 api = Api(app)
 
-client = MongoClient("mongodb://db:27017")
+client = MongoClient()
 db = client.SimilarityDB
 users = db["Users"]
 
@@ -53,7 +53,7 @@ def verifyPw(username, password):
         return False
     hashed_pw = users.find({
         "Username": username
-    })[0]["password"]
+    })[0]["Password"]
 
     if bcrypt.hashpw(password.encode('utf8'), hashed_pw) == hashed_pw:
         return True
@@ -107,8 +107,56 @@ class Refill(Resource):
         return jsonify(retJson)
 
 
+class Detect(Resource):
+    @staticmethod
+    def post():
+        postedData = request.get_json()
+
+        username = postedData["username"]
+        password = postedData["password"]
+
+        if not UserExist(username):
+            retJson = {
+                "status": 301,
+                "msg": "Invalid Username"
+            }
+            return jsonify(retJson)
+
+        correct_pw = verifyPw(username, password)
+        if not correct_pw:
+            retJson = {
+                "status": 302,
+                "msg": "Incorrect Password"
+            }
+            return jsonify(retJson)
+        num_tokens = countTokens(username)
+
+        if num_tokens <= 0:
+            retJson = {
+                "status": 303,
+                "msg": "You are Out of tokens,Please Refill!"
+            }
+            return jsonify(retJson)
+
+        current_token = countTokens(username)
+        users.update({
+            "Username": username
+        }, {
+            "$set": {
+                "Tokens": current_token - 1
+            }
+        })
+        bal_tokens = countTokens(username)
+        retJson = {
+            "status": 200,
+            "msg": "Api Called successfully and remember you used one ,Balance:" + str(bal_tokens)
+        }
+        return jsonify(retJson)
+
+
 api.add_resource(Register, '/register')
 api.add_resource(Refill, '/refill')
+api.add_resource(Detect, '/detect')
 
 
 if __name__ == "__main__":
